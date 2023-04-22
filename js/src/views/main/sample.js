@@ -4,6 +4,7 @@ import AjaxView from './ajaxview';
 
 import MarkAsNewsDialog from '../../dialogs/markasnews';
 import UserBrowserDialog from '../../dialogs/userbrowser';
+import ConfirmDeleteDialog from '../../dialogs/confirmdelete';
 
 import ckeditorconfig from '../../util/ckeditorconfig';
 
@@ -28,38 +29,13 @@ class SampleView extends AjaxView {
   onDocumentReady() {
     const self = this;
 
-    // "mark as news" dialog
     new MarkAsNewsDialog();
-
-    // user browser dialog
     new UserBrowserDialog(this.mainView);
-
-    // sample and action deletion
-    $('#confirm-delete').on('show.bs.modal', function(e) {
-      $(this).find('.btn-ok').attr('id', $(e.relatedTarget).data('id'));
-      $(this).find('.btn-ok').data('type', $(e.relatedTarget).data('type'));
-      $('.debug-id').html(
-          'Delete <strong>' + $(e.relatedTarget).data('type') +
-        '</strong> ID: <strong>' + $(this).find('.btn-ok').attr('id') + '</strong>',
-      );
-    });
-
-    $('.btn-ok').click(function(event) {
-      const type = $(this).data('type');
-      const id = $(this).attr('id');
-
+    new ConfirmDeleteDialog(function(type, id) {
       switch (type) {
         case 'action':
           R.actionsAPI.deleteAction(id, function(error, data, response) {
-            if (!response) {
-              R.errorDialog('Server error. Please check your connection.');
-            } else if (response.error) {
-              if (response.body.message) {
-                R.errorDialog(response.body.message);
-              } else {
-                R.errorDialog(response.error);
-              }
-            } else {
+            if (!self.#responseHasError(response)) {
               $('#' + id + '.list-entry').remove();
             }
             $('#confirm-delete').modal('hide');
@@ -67,15 +43,7 @@ class SampleView extends AjaxView {
           break;
         case 'sample':
           R.samplesAPI.deleteSample(id, function(error, data, response) {
-            if (!response) {
-              R.errorDialog('Server error. Please check your connection.');
-            } else if (response.error) {
-              if (response.body.message) {
-                R.errorDialog(response.body.message);
-              } else {
-                R.errorDialog(response.error);
-              }
-            } else {
+            if (!self.#responseHasError(response)) {
               self.mainView.loadWelcome();
             }
             $('#confirm-delete').modal('hide');
@@ -83,15 +51,7 @@ class SampleView extends AjaxView {
           break;
         case 'share':
           R.sharesAPI.deleteShare(id, function(error, data, response) {
-            if (!response) {
-              R.errorDialog('Server error. Please check your connection.');
-            } else if (response.error) {
-              if (response.body.message) {
-                R.errorDialog(response.body.message);
-              } else {
-                R.errorDialog(response.error);
-              }
-            } else {
+            if (!self.#responseHasError(response)) {
               $('#sharelistentry' + id).remove();
               if (response.status == 205) { // if the user removed himself from the sharer list
                 self.mainView.loadWelcome();
@@ -162,6 +122,24 @@ class SampleView extends AjaxView {
   onLoadError() {
     R.errorDialog(`Sample #${sampleid} does not exist or you do not have access to it.`);
   }
+
+  #responseHasError(response) {
+    let errorMsg = null;
+    if (!response) {
+      errorMsg = 'Server error. Please check your connection.';
+    } else if (response.error) {
+      if (response.body.message) {
+        errorMsg = response.body.message;
+      } else {
+        errorMsg = response.error;
+      }
+    }
+    if (errorMsg !== null) {
+      R.errorDialog(errorMsg);
+      return true;
+    }
+    return false;
+  }
 }
 
 let hiddeneditor;
@@ -211,8 +189,7 @@ function setupSampleImage(sampleid) {
 }
 
 function initEditor(sampleid, sampleview, mainview) {
-  if ($('#hiddenckeditor').length) // check if this field exists
-  {
+  if ($('#hiddenckeditor').length) {
     hiddeneditor = CKEDITOR.inline(
         $('#hiddenckeditor')[0],
         $.extend(
@@ -350,7 +327,7 @@ function initEditor(sampleid, sampleview, mainview) {
    * once it is ready.
    */
   if (typeof(MathJax) !== 'undefined' && MathJax.isReady) {
-    MathJax.Hub.Queue(['Typeset', MathJax.Hub]);
+    MathJax.Hub.Queue(['Typeset', MathJax.Hub]); // eslint-disable-line new-cap
   }
 
   // set up CKEditor for new action form
@@ -367,16 +344,17 @@ function initEditor(sampleid, sampleview, mainview) {
   // other editables:
   $('#samplename.editable').texteditable();
   $('#samplename.editable').on('editableupdate', function(event, data) {
-    if (!data.code) // only if no error occured
-    {
+    // TODO: data.code is deprecated
+    if (!data.code) {
       $(`#nav-entry${sampleid} > .nav-entry-name`).html(data.value);
     }
   });
   $('.actiondate.editable').texteditable();
 
   $('.swapaction').click( function(event) {
+    const element = $(this); // eslint-disable-line no-invalid-this
     R.actionsAPI.swapActionOrder(
-        {'actionid': $(this).data('id'), 'swapid': $(this).data('swapid')},
+        {'actionid': element.data('id'), 'swapid': element.data('swapid')},
         function(error, data, response) {
           if (!response) {
             R.errorDialog('Server error. Please check your connection.');
@@ -393,11 +371,11 @@ function initEditor(sampleid, sampleview, mainview) {
   });
 
   $('.togglenews').click(function(event) {
-    const flag_element = $(this);
-    const actionid = flag_element.data('id');
+    const flag = $(this); // eslint-disable-line no-invalid-this
+    const actionid = flag.data('id');
 
     // is this action not yet marked as news?
-    if (flag_element.hasClass('markasnews')) {
+    if (flag.hasClass('markasnews')) {
       // set the action ID hidden field
       // TODO: it seems a bit dangerous that this form field is just called "actionid"
       $('#actionid').val(actionid);
@@ -416,8 +394,8 @@ function initEditor(sampleid, sampleview, mainview) {
             R.errorDialog(response.error);
           }
         } else {
-          flag_element.removeClass('unmarkasnews');
-          flag_element.addClass('markasnews');
+          flag.removeClass('unmarkasnews');
+          flag.addClass('markasnews');
         }
       });
     }

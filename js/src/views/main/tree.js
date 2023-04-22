@@ -16,7 +16,9 @@ class Tree {
     let ctrlIsPressed = false;
     const self = this;
 
-    // keep track of CTRL key, so that double click event can open sample in new window if CTRL is held
+    /* keep track of CTRL key, so that double click event can open sample in new window if CTRL
+     * is held
+     */
     $(document).keydown(function(event) {
       if (event.which=='17') {
         ctrlIsPressed = true;
@@ -33,20 +35,22 @@ class Tree {
     allEntries.dblclick(function(event) {
       event.preventDefault();
 
+      const id = $(this).data('id'); // eslint-disable-line no-invalid-this
+
       // if CTRL is pressed, open sample in a new tab
       if (ctrlIsPressed) {
-        window.open('/sample/' + $(this).data('id'));
+        window.open(`/sample/${id}`);
         return;
       }
 
-      self.mainView.loadSample($(this).data('id'));
+      self.mainView.loadSample(id);
       // on small screen, hide the sidebar after a sample has been selected
       R.mobileHideSidebar();
     });
 
     // add glyphicons to expandable items in the navbar
     allEntries.each(function() {
-      addGlyphicon($(this));
+      addGlyphicon($(this)); // eslint-disable-line no-invalid-this
     });
 
     // enable sample drag and drop in navigation bar
@@ -55,7 +59,8 @@ class Tree {
     $('.nav-dropzone').on(dropZoneHandlers(activeEntry));
 
     $('.inheritance').dblclick(function() {
-      location.href = '/loginas?userid='+$(this).data('userid');
+      const id = $(this).data('userid'); // eslint-disable-line no-invalid-this
+      location.href = `/loginas?userid=${id}`;
     });
 
     // TODO: togglearchived could now be achieved without reloading the navbar
@@ -100,18 +105,18 @@ class Tree {
           .animate({scrollTop: top + $('div#sidebar').scrollTop()}, 1000);
     }
     if (flash) {
-      const old_background = naventry.css('background-color');
+      const oldBackground = naventry.css('background-color');
       // flash the sample
       naventry
           .stop()
           .delay(isInView ? 0 : 1000)
           .queue(function(next) {
-            $(this).css('background-color', '#FFFF9C');
+            naventry.css('background-color', '#FFFF9C');
             next();
           })
           .delay(1000)
           .queue(function(next) {
-            $(this).css('background-color', old_background);
+            naventry.css('background-color', oldBackground);
             next();
           });
     }
@@ -122,24 +127,27 @@ class Tree {
     // make sure all parent samples are expanded in navbar
     const naventry = $('#nav-entry'+id);
     const collapsibles = naventry.parents('.nav-children');
-    let collapsed_counter = 0;
+    let collapsedCounter = 0;
 
-    // for each collapsible parent check if it's collapsed and increase the counter accordingly, so that the autoscroll
-    // function is only activated when everything has finished expanding (so that the coordinates in scrollTo
-    // are correctly calculated)
+    /* for each collapsible parent check if it's collapsed and increase the counter accordingly,
+     * so that the autoscroll function is only activated when everything has finished expanding
+     * (so that the coordinates in scrollTo are correctly calculated)
+     */
     collapsibles.each(function() {
-      if ($(this).attr('aria-expanded') !== 'true') { // careful, it can be undefined instead of false, hence the notation
-        collapsed_counter++;
-        $(this).one('shown.bs.collapse', function() {
-          collapsed_counter--;
-          if (!collapsed_counter) {
+      const element = $(this); // eslint-disable-line no-invalid-this
+      // careful, it can be undefined instead of false, hence the notation
+      if (element.attr('aria-expanded') !== 'true') {
+        collapsedCounter++;
+        element.one('shown.bs.collapse', function() {
+          collapsedCounter--;
+          if (!collapsedCounter) {
             self.#scrollTo(id, flash);
           }
         });
       }
     });
 
-    if (collapsed_counter) {
+    if (collapsedCounter) {
       collapsibles.collapse('show');
     } else {
       self.#scrollTo(id, flash);
@@ -156,7 +164,7 @@ class Tree {
     const self = this;
 
     $.ajax({
-      url: '/navbar',
+      url: '/tree',
       data: {'order': self.orderBy,
         'showarchived': self.showArchived},
       success: function(data) {

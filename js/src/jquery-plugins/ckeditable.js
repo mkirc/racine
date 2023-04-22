@@ -1,7 +1,10 @@
 import jQuery from 'jquery';
 import ckeditorconfig from '../util/ckeditorconfig';
 
-(function($) { // this is a jQuery plugin
+const serverErrorMsg = 'Could not connect to the server. ' +
+  'Please make sure you are connected and try again.';
+
+(function($) {
   $.fn.texteditable = function() {
     // we need to iterate, because if we are given more than one field, the getter/setter functions
     // will be read only once otherwise
@@ -26,7 +29,7 @@ import ckeditorconfig from '../util/ckeditorconfig';
             const json = $.parseJSON(xhr.responseText);
             R.errorDialog(json.message);
           } else {
-            R.errorDialog('Could not connect to the server. Please make sure you are connected and try again.');
+            R.errorDialog(serverErrorMsg);
           }
         },
       });
@@ -59,7 +62,7 @@ import ckeditorconfig from '../util/ckeditorconfig';
             const json = $.parseJSON(xhr.responseText);
             R.errorDialog(json.message);
           } else {
-            R.errorDialog('Could not connect to the server. Please make sure you are connected and try again.');
+            R.errorDialog(serverErrorMsg);
           }
         },
       });
@@ -67,12 +70,12 @@ import ckeditorconfig from '../util/ckeditorconfig';
   };
 
   $.fn.ckeditable = function() {
-    this.on('edit', ckeditable_activate);
+    this.on('edit', ckeditableActivate);
     return this;
   };
 
-  function on_edit_requested(event) {
-    let field = $(this);
+  function onEditRequested(event) {
+    let field = $(this); // eslint-disable-line no-invalid-this
     if (field.is('img.edittrigger')) {
       field = field.parent();
     }
@@ -87,7 +90,7 @@ import ckeditorconfig from '../util/ckeditorconfig';
   $.fn.setup_triggers = function() {
     // add the double click handler
     $(this).unbind('dblclick');
-    $(this).dblclick(on_edit_requested);
+    $(this).dblclick(onEditRequested);
 
     // add the edit trigger icon
     $(this).each(function(index, field) {
@@ -100,7 +103,7 @@ import ckeditorconfig from '../util/ckeditorconfig';
       field.find('img.edittrigger').unbind('click');
       field.unbind('editabledone');
       // re-define events
-      field.find('img.edittrigger').click(on_edit_requested);
+      field.find('img.edittrigger').click(onEditRequested);
       field.on('editabledone', function(event) {
         field.addClass('editable');
         field.removeClass('editabling');
@@ -110,15 +113,17 @@ import ckeditorconfig from '../util/ckeditorconfig';
     return this;
   };
 
-  function ckeditable_activate(event) {
+  function ckeditableActivate(event) {
     // do not react if the user clicked on an image
     if ($(event.target).is('img')) {
       return;
     }
 
-    const field = $(this);
+    const field = $(this); // eslint-disable-line no-invalid-this
 
-    // read original HTML from server in order to remove all modifications like Latex parsing or Lightbox
+    /* read original HTML from server in order to remove all modifications
+     * like Latex parsing or Lightbox
+     */
     $.ajax({
       url: field.data('getter'),
       type: 'get',
@@ -137,16 +142,16 @@ import ckeditorconfig from '../util/ckeditorconfig';
 
         // activate CKEditor
         const editor = CKEDITOR.inline(field.get()[0], clone);
-        editor.on('done', ckeditable_on_done);
+        editor.on('done', onCkeditableDone);
       },
       error: function( jqXHR, textStatus ) {
-        R.errorDialog('Could not connect to the server. Please make sure you are connected and try again.');
+        R.errorDialog(serverErrorMsg);
         field.trigger('editabledone');
       },
     });
   }
 
-  function ckeditable_on_done(event) {
+  function onCkeditableDone(event) {
     const editor = event.editor;
     const field = event.editor.config.field;
     const data = event.editor.getData();
@@ -161,18 +166,18 @@ import ckeditorconfig from '../util/ckeditorconfig';
         data: {'value': data},
         success: function( data ) {
           if (data.code) R.errorDialog('An error occured.');
-          ckeditable_finish(editor, field);
+          ckeditableFinish(editor, field);
         },
         error: function( jqXHR, textStatus ) {
-          R.errorDialog('Could not connect to the server. Please make sure you are connected and try again.');
+          R.errorDialog(serverErrorMsg);
         },
       });
     } else {
-      ckeditable_finish(editor, field);
+      ckeditableFinish(editor, field);
     }
   }
 
-  function ckeditable_finish(editor, field) {
+  function ckeditableFinish(editor, field) {
     // read new HTML from server (i.e. either the modified or unmodified version)
     $.ajax({
       url: field.data('getter'),
@@ -188,7 +193,9 @@ import ckeditorconfig from '../util/ckeditorconfig';
         field.removeClass('ckeditabling');
 
         // typeset all equations in this field
-        MathJax.Hub && MathJax.Hub.Queue(['Typeset', MathJax.Hub, field.get()]);
+        if (MathJax.Hub) {
+          MathJax.Hub.Queue(['Typeset', MathJax.Hub, field.get()]); // eslint-disable-line new-cap
+        }
 
         field.racinecontent();
 
@@ -196,7 +203,7 @@ import ckeditorconfig from '../util/ckeditorconfig';
         field.trigger('editabledone');
       },
       error: function( jqXHR, textStatus ) {
-        R.errorDialog('Could not connect to the server. Please make sure you are connected and try again.');
+        R.errorDialog(serverErrorMsg);
       },
     });
   }

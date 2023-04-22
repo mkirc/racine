@@ -20,8 +20,10 @@ class NewSampleDialog {
     });
 
     dialog.on('shown.bs.modal', function() {
-      // workaround for a bug in CKEditor -> if we don't do this after the editor is shown, a <br /> tag is inserted
-      // if we tab to the editor
+      /* Workaround for a bug in CKEditor:
+       * If we don't do this after the editor is shown, a <br /> tag is inserted if we tab to the
+       * editor.
+       */
       CKEDITOR.instances['newsampledescription'].setData('');
 
       // put the cursor in the sample name field
@@ -66,8 +68,12 @@ class NewSampleDialog {
           if (response.body.error) {
             // form failed validation; because of invalid data or expired CSRF token
             for (const field in response.body.error) {
+              if (!Object.hasOwn(response.body.error, field)) {
+                continue;
+              }
               if (field === 'csrf_token') {
-                R.errorDialog('The CSRF token has expired. Please reload the page to create a new sample.');
+                R.errorDialog('The CSRF token has expired. ' +
+                  'Please reload the page to create a new sample.');
                 continue;
               }
               // get form group
@@ -77,6 +83,9 @@ class NewSampleDialog {
               formgroup.addClass('has-error');
               // add the error message to the form group
               for (const i in response.body.error[field]) {
+                if (!Object.hasOwn(response.body.error, field)) {
+                  continue;
+                }
                 formgroup.append(
                     '<span class="help-block">' +
                                     response.body.error[field][i] +

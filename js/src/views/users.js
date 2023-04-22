@@ -1,4 +1,5 @@
 import $ from 'jquery';
+import ConfirmDeleteDialog from '../dialogs/confirmdelete';
 
 class UsersView {
   constructor(params) {
@@ -6,21 +7,15 @@ class UsersView {
   }
 
   onDocumentReady() {
-    $('#confirm-delete').on('show.bs.modal', function(e) {
-      $(this).find('.btn-ok').attr('id', $(e.relatedTarget).data('id'));
-      $('.debug-id').html('Delete ID: <strong>' + $(this).find('.btn-ok').attr('id') + '</strong>');
-    });
-
-    $('.btn-ok').click(function(event) {
-      const id = $(this).attr('id');
-      location.href = '/settings/users?delete='+id;
+    new ConfirmDeleteDialog(function(type, id) {
+      location.href = `/settings/users?delete=${id}`;
     });
 
     $('.loginas').click(function(event) {
       $.ajax({
         url: '/loginas',
         type: 'get',
-        data: {'userid': $(this).data('userid')},
+        data: {'userid': $(this).data('userid')}, // eslint-disable-line no-invalid-this
         success: function(data) {
           location.href = '/';
         },
