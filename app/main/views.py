@@ -4,25 +4,25 @@ from sqlalchemy import not_
 from werkzeug.security import safe_join
 
 from . import main
-from .forms import NewSampleForm, MarkActionAsNewsForm
-from ..models import (
-    Sample,
-    User,
-    Share,
-)
+from .forms import NewSampleForm, MarkAsNewsForm
+from ..models import Sample, Share, User
+
+
+def render_main_template(**params):
+    return render_template(
+        "main/main.html",
+        view="main",
+        api_token=current_user.get_token(),
+        newsampleform=NewSampleForm(),
+        markasnewsform=MarkAsNewsForm(),
+        params=params,
+    )
 
 
 @main.route("/")
 @login_required
 def index():
-    return render_template(
-        "main/main.html",
-        view="main",
-        params={"ajaxView": "welcome"},
-        api_token=current_user.get_token(),
-        newsampleform=NewSampleForm(),
-        dlg_markasnews_form=MarkActionAsNewsForm(),
-    )
+    return render_main_template(ajaxView="welcome")
 
 
 @main.route("/sample/<int:sampleid>")
@@ -31,21 +31,7 @@ def sample(sampleid):
     sample = Sample.query.get(sampleid)
     if sample is None or not sample.is_accessible_for(current_user) or sample.isdeleted:
         return render_template("errors/404.html"), 404
-    return render_template(
-        "main/main.html",
-        view="main",
-        params={"ajaxView": "sample", "sampleid": sampleid},
-        api_token=current_user.get_token(),
-        newsampleform=NewSampleForm(),
-        dlg_markasnews_form=MarkActionAsNewsForm(),
-    )
-
-
-@main.route("/help")
-@login_required
-def help():
-    admins = User.query.filter_by(is_admin=True).all()
-    return render_template("help.html", admins=admins)
+    return render_main_template(ajaxView="sample", sampleid=sampleid)
 
 
 @main.route("/search", methods=["GET"])
@@ -54,54 +40,15 @@ def search():
     keyword = request.args.get("term")
     if keyword is None or keyword == "":
         return jsonify(error="Please specify a search term")
-    keyword = keyword.lower()
 
-    # In order to reach really ALL samples that are accessible by the current user, we need to
-    # go through the hierarchy. The most tricky samples to catch are the children of a sample
-    # that the user shares with someone else and that are not explicitly shared with the user.
-    #
-    # The problem with the following strategy is that samples on the same hierarchy level are
-    # not given the same priority in the results list. Instead the first "tree" will be given
-    # highest priority.
-    def find_in(samples, keyword, limit):
-        if not samples or limit < 1:
-            return []
-        result = []
-        for s in samples:
-            # sample name should never be None, but due to bugs this may happen...
-            if s.name is not None and keyword in s.name.lower():
-                result.append(s)
-            # TODO: does s.children contain deleted samples ?
-            result.extend(find_in(s.children + s.mountedsamples, keyword, limit - len(result)))
-        return result
+    return render_main_template(ajaxView="searchResults", term=keyword)
 
-    own_samples = Sample.query.filter_by(owner=current_user, parent_id=0, isdeleted=False).all()
-    shares = current_user.directshares
-    results = [
-        {
-            "name": s.name,
-            "id": s.id,
-            "ownername": s.owner.username,
-            "mysample": (s.owner == current_user),
-            "parentname": s.parent.name if s.parent_id else "",
-        }
-        for s in find_in(own_samples + shares, keyword, 10)
-    ]
 
-    if request.args.get("autocomplete") is not None:
-        return jsonify(results=results)
-    elif request.args.get("ajax") is not None:
-        return render_template("main/searchresults.html", results=results, term=keyword)
-    else:
-        return render_template(
-            "main/main.html",
-            view="main",
-            params={"ajaxView": "searchResults", "term": keyword},
-            sample=None,
-            term=keyword,
-            newsampleform=NewSampleForm(),
-            dlg_markasnews_form=MarkActionAsNewsForm(),
-        )
+@main.route("/help")
+@login_required
+def help():
+    admins = User.query.filter_by(is_admin=True).all()
+    return render_template("help.html", admins=admins)
 
 
 @main.route("/userlist", methods=["POST"])

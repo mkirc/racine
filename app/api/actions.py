@@ -1,49 +1,51 @@
 from datetime import date, datetime
 from flask import jsonify, request
-from marshmallow import Schema, fields
+from marshmallow import fields
 
 from . import api
-from .common import IdParameter, EmptySchema  # noqa: F401
+from .samples import validate_sample_access
+from .common import OrderedSchema, IdParameter, EmptySchema  # noqa: F401
 from .errors import bad_request
-from ..main.forms import MarkActionAsNewsForm, NewActionForm
+from ..main.forms import MarkAsNewsForm, NewActionForm
 
 from .. import db
 from ..models import Action, News, Sample, record_activity, token_auth
 
 
-class SampleParameter(Schema):
+class SampleParameter(OrderedSchema):
     sampleid = fields.Int()
 
 
-class NewActionFormContent(Schema):
+class NewActionFormContent(OrderedSchema):
     csrf_token = fields.Str()
     timestamp = fields.Date()
     description = fields.Str()
 
 
-class CreateActionError(Schema):
+class CreateActionError(OrderedSchema):
     resubmit = fields.Bool()
 
 
-class SwapActionOrderContent(Schema):
+class SwapActionOrderContent(OrderedSchema):
     actionid = fields.Int()
     swapid = fields.Int()
 
 
-class MarkActionAsNewsContent(Schema):
+class MarkAsNewsContent(OrderedSchema):
     csrf_token = fields.Str()
     title = fields.Str()
     expires = fields.Date()
     actionid = fields.Int()
 
 
-class UnmarkActionAsNewsContent(Schema):
+class UnmarkAsNewsContent(OrderedSchema):
     actionid = fields.Int()
 
 
 @api.route("/action/<int:sampleid>", methods=["PUT"])
 @token_auth.login_required
-def createaction(sampleid):
+@validate_sample_access
+def createaction(sample):
     """Create an action in the database.
     ---
     put:
@@ -69,21 +71,13 @@ def createaction(sampleid):
               schema: CreateActionError
           description: Failed to create action
     """
-    sample = Sample.query.get(sampleid)
-    if (
-        sample is None
-        or not sample.is_accessible_for(token_auth.current_user())
-        or sample.isdeleted
-    ):
-        return bad_request("Sample does not exist or you do not have the right to access it")
-
     form = NewActionForm()
     if form.validate_on_submit():
         a = Action(
             datecreated=date.today(),
             timestamp=form.timestamp.data,
             owner=token_auth.current_user(),
-            sample_id=sampleid,
+            sample_id=sample.id,
             description=form.description.data,
         )
         db.session.add(a)
@@ -165,13 +159,13 @@ def markasnews():
     """Mark an action as news.
     ---
     post:
-      operationId: markActionAsNews
+      operationId: markAsNews
       tags: [actions]
       requestBody:
         required: true
         content:
           application/x-www-form-urlencoded:
-            schema: MarkActionAsNewsContent
+            schema: MarkAsNewsContent
       responses:
         200:
           content:
@@ -179,7 +173,7 @@ def markasnews():
               schema: EmptySchema
           description: Action marked as news
     """
-    form = MarkActionAsNewsForm()
+    form = MarkAsNewsForm()
     if form.validate_on_submit():
         # get action from database
         action = Action.query.get(form.actionid.data)
@@ -219,13 +213,13 @@ def unmarkasnews():
     """Unmark an action as news.
     ---
     post:
-      operationId: unmarkActionAsNews
+      operationId: unmarkAsNews
       tags: [actions]
       requestBody:
         required: true
         content:
           application/x-www-form-urlencoded:
-            schema: UnmarkActionAsNewsContent
+            schema: UnmarkAsNewsContent
       responses:
         200:
           content:

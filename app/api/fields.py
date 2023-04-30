@@ -2,14 +2,15 @@ import inspect
 
 from datetime import datetime
 from flask import jsonify, request
-from flask_login import current_user
-from marshmallow import Schema, fields, validate
+from marshmallow import fields, validate
 
 from . import api
+from .common import OrderedSchema
 from .errors import bad_request
 
 from .. import db
 from ..models import Action, Sample, Share, SMBResource, User, record_activity, token_auth
+from ..models.user import current_user
 from ..validators import validate_form_field
 
 from ..main.forms import NewSampleForm
@@ -40,7 +41,7 @@ supported_targets = {
         "dbobject": Sample,
         "auth": "owner",
         "fields": {
-            "name": lambda x: validate_form_field(NewSampleForm(), "newsamplename", x),
+            "name": lambda x: validate_form_field(NewSampleForm(), "name", x),
             "description": str,
             "image": str,
         },
@@ -78,14 +79,14 @@ supported_targets = {
 }
 
 
-class FieldParameters(Schema):
+class FieldParameters(OrderedSchema):
     target = fields.Str(validate=validate.OneOf(supported_targets.keys()))
+    id = fields.Int()
     # TODO: add target-specific field validation
     field = fields.Str()
-    id = fields.Int()
 
 
-class ValueSchema(Schema):
+class ValueSchema(OrderedSchema):
     value = fields.Str()
 
 
@@ -125,9 +126,9 @@ def getfield(target, field, id):
 
     # check if the current user is authorized to access this item
     if (
-        not (target["auth"] == "owner" and item.owner == current_user)
-        and not (target["auth"] == "admin" and current_user.is_admin)
-        and not (target["auth"] == "action_auth" and item.has_read_access(current_user))
+        not (target["auth"] == "owner" and item.owner == current_user())
+        and not (target["auth"] == "admin" and current_user().is_admin)
+        and not (target["auth"] == "action_auth" and item.has_read_access(current_user()))
     ):
         return bad_request("Invalid request.")
 
@@ -176,9 +177,9 @@ def updatefield(target, field, id):
 
     # check if the current user is authorized to access this item
     if (
-        not (target["auth"] == "owner" and item.owner == current_user)
-        and not (target["auth"] == "admin" and current_user.is_admin)
-        and not (target["auth"] == "action_auth" and item.has_write_access(current_user))
+        not (target["auth"] == "owner" and item.owner == current_user())
+        and not (target["auth"] == "admin" and current_user().is_admin)
+        and not (target["auth"] == "action_auth" and item.has_write_access(current_user()))
     ):
         return bad_request("Invalid request.")
 
@@ -210,7 +211,7 @@ def updatefield(target, field, id):
                 sample = item.sample
             else:
                 sample = None
-            record_activity("update:" + target_name + ":" + field, current_user, sample)
+            record_activity("update:" + target_name + ":" + field, current_user(), sample)
 
     except Exception as e:
         return jsonify(value=str(getattr(item, field)), message="Error: " + str(e)), 400

@@ -9,7 +9,7 @@
     {% endif %}
     <div id="samplename" class="{% if sample.owner == current_user %}editable{% endif %}" data-setter="/api/set/sample/name/{{ sample.id }}">{{ sample.name }}</div>
     {% if sample.owner == current_user %}
-        <img class="editor-shortcut" title="Delete sample" src="/static/images/delete.png" data-href="/delsample/{{ sample.id }}" data-type="sample" data-id="{{ sample.id }}" data-toggle="modal" data-target="#confirm-delete">
+        <img class="editor-shortcut" title="Delete sample" src="/static/images/delete.png" data-href="/delsample/{{ sample.id }}" data-type="sample" data-id="{{ sample.id }}" data-toggle="modal" data-target="#dlg-confirm-delete">
         <img class="editor-shortcut" title="{% if sample.isarchived %}De-archive{% else %}Archive{% endif %}" id="archive" src="{% if sample.isarchived %}/static/images/dearchive.png{% else %}/static/images/archive.png{% endif %}">
         <img class="editor-shortcut" title="{% if sample.iscollaborative %}Make non-collaborative{% else %}Make collaborative{% endif %}" id="collaborate" src="{% if sample.iscollaborative %}/static/images/non-collaborative.png{% else %}/static/images/collaborative.png{% endif %}">
     {% endif %}
@@ -42,7 +42,7 @@
         {% endif %}
         <div class="col-md-5 sampledescription">
             <div><strong>Description:</strong></div>
-            <div id="sampledescription" class="{% if sample.owner == current_user %}ckeditable editable{% endif %}" data-getter="/api/get/sample/description/{{ sample.id }}" data-setter="/api/set/sample/description/{{ sample.id }}">
+            <div id="sampledescription" class="{% if sample.owner == current_user %}ckeditable editable{% endif %}" data-type="sample" data-field="description" data-id="{{ sample.id }}">
                 {{ sample.description|safe }}
             </div>
         </div>
@@ -54,7 +54,7 @@
             {% for share in shares %}
                 <div class="sharelistentry" id="sharelistentry{{ share.id }}">
                     {% if sample.owner == current_user or share.user == current_user %}
-                        <a data-type="share" data-id="{{ share.id }}" data-toggle="modal" data-target="#confirm-delete" href="">
+                        <a data-type="share" data-id="{{ share.id }}" data-toggle="modal" data-target="#dlg-confirm-delete" href="">
                             <i class="glyphicon glyphicon-remove"></i>
                         </a>
                     {% else %}
@@ -82,12 +82,12 @@
     {% if invertactionorder %}
     <div class="row list-entry">
         <form id="newactionform">
-            {{ form.hidden_tag() }}
+            {{ newactionform.hidden_tag() }}
             <div class="col-md-2">
-                {{ wtf.form_field(form.timestamp) }}
-                {{ wtf.form_field(form.submit) }}
+                {{ wtf.form_field(newactionform.timestamp) }}
+                {{ wtf.form_field(newactionform.submit) }}
             </div>
-            <div class="col-md-10">{{ wtf.form_field(form.description) }}</div>
+            <div class="col-md-10">{{ wtf.form_field(newactionform.description) }}</div>
         </form>
     </div>
     {% endif %}
@@ -100,7 +100,7 @@
                 {% if action.owner != current_user %}<div style="font-style: italic">{{ action.owner.username }}</div>{% endif %}
                 {% if action.sample != sample %}<div style="font-style: italic;">{{ action.sample.name }}</div>{% endif %}
                 {% if action.owner == current_user or sample.iscollaborative %}
-                    <i class="actionicon glyphicon glyphicon-trash" data-type="action" data-id="{{ action.id }}" data-toggle="modal" data-target="#confirm-delete"></i>
+                    <i class="actionicon glyphicon glyphicon-trash" data-type="action" data-id="{{ action.id }}" data-toggle="modal" data-target="#dlg-confirm-delete"></i>
                 {% if not i == 0 %} {# can  be moved up #}
                     <i class="actionicon glyphicon glyphicon-arrow-up swapaction" data-id="{{ action.id }}" data-swapid="{{ actions[i-1].id }}"></i>
                 {% endif %}
@@ -111,18 +111,18 @@
                 <i id="togglenews-{{ action.id }}" class="actionicon glyphicon glyphicon-flag togglenews {% if not action.news_id %}markasnews{% else %}unmarkasnews{% endif %}" data-id="{{ action.id }}"></i>
             </div>
         </div>
-        <div class="col-md-10 actiondescription{% if action.owner == current_user or sample.iscollaborative %} editable ckeditable{% endif %}" data-getter="/api/get/action/description/{{ action.id }}" data-setter="/api/set/action/description/{{ action.id }}">{{ action.description|safe }}</div>
+        <div class="col-md-10 actiondescription{% if action.owner == current_user or sample.iscollaborative %} editable ckeditable{% endif %}" data-type="action" data-field="description" data-id="{{ action.id }}">{{ action.description|safe }}</div>
     </div>
     {% endfor %}
     {% if not invertactionorder %}
     <div class="row list-entry">
         <form id="newactionform">
-            {{ form.hidden_tag() }}
+            {{ newactionform.hidden_tag() }}
             <div class="col-md-2">
-                {{ wtf.form_field(form.timestamp) }}
-                {{ wtf.form_field(form.submit) }}
+                {{ wtf.form_field(newactionform.timestamp) }}
+                {{ wtf.form_field(newactionform.submit) }}
             </div>
-            <div class="col-md-10">{{ wtf.form_field(form.description) }}</div>
+            <div class="col-md-10">{{ wtf.form_field(newactionform.description) }}</div>
         </form>
     </div>
     {% endif %}

@@ -1,37 +1,73 @@
 from flask import jsonify
-from marshmallow import Schema, fields
+from functools import wraps
+from marshmallow import fields
 
 from . import api
-from .common import IdParameter, EmptySchema  # noqa: F401
+from .common import OrderedSchema, EmptySchema  # noqa: F401
 from .errors import bad_request
 from ..main.forms import NewSampleForm
 
 from .. import db
 from ..models import News, Sample, Share, record_activity, token_auth
+from ..models.tree import is_indirectly_shared, logical_parent
 
 
-class NewSampleFormContent(Schema):
-    csrf_token = fields.Str()
-    newsamplename = fields.Str()
-    newsampleparent = fields.Str()
-    newsampleparentid = fields.Int()
-    newsampledescription = fields.Str()
-
-
-class NewSampleResponse(Schema):
+class SampleIdParameter(OrderedSchema):
     sampleid = fields.Int()
 
 
-class ToggleArchivedResponse(Schema):
+class NewSampleFormContent(OrderedSchema):
+    csrf_token = fields.Str()
+    name = fields.Str()
+    parent = fields.Str()
+    parentid = fields.Int()
+    description = fields.Str()
+
+
+class NewSampleResponse(OrderedSchema):
+    sampleid = fields.Int()
+
+
+class ToggleArchivedResponse(OrderedSchema):
     isarchived = fields.Bool()
 
 
-class ToggleCollaborativeResponse(Schema):
+class ToggleCollaborativeResponse(OrderedSchema):
     iscollaborative = fields.Bool()
 
 
-class ParentIdParameter(Schema):
+class ParentIdParameter(OrderedSchema):
     parentid = fields.Int()
+
+
+def validate_sample_access(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if "sampleid" not in kwargs:
+            return bad_request("Invalid use of decorator: sampleid is missing")
+        sample = Sample.query.get(kwargs.pop("sampleid"))
+        if (
+            sample is None
+            or sample.isdeleted
+            or not sample.is_accessible_for(token_auth.current_user())
+        ):
+            return bad_request("Sample does not exist or you do not have the right to access it.")
+        return func(sample=sample, *args, **kwargs)
+
+    return wrapper
+
+
+def validate_sample_owner(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if "sampleid" not in kwargs:
+            return bad_request("Invalid use of decorator: sampleid is missing")
+        sample = Sample.query.get(kwargs.pop("sampleid"))
+        if sample is None or sample.isdeleted or sample.owner != token_auth.current_user():
+            return bad_request("Sample does not exist or you do not have the right to modify it.")
+        return func(sample=sample, *args, **kwargs)
+
+    return wrapper
 
 
 @api.route("/sample", methods=["PUT"])
@@ -57,12 +93,12 @@ def createsample():
     form = NewSampleForm()
     if form.validate_on_submit():
         try:
-            parent_id = int(form.newsampleparentid.data) if form.newsampleparentid.data else 0
+            parent_id = int(form.parentid.data) if form.parentid.data else 0
             sample = Sample(
                 owner=token_auth.current_user(),
-                name=form.newsamplename.data,
+                name=form.name.data,
                 parent_id=parent_id,
-                description=form.newsampledescription.data,
+                description=form.description.data,
                 isarchived=False,
                 isdeleted=False,
             )
@@ -72,16 +108,21 @@ def createsample():
             return jsonify(sampleid=sample.id), 201
         except Exception as e:
             db.session.rollback()
-            return jsonify(error={"newsamplename": [str(e)]}), 400
+            return jsonify(error={"name": [str(e)]}), 400
     elif form.is_submitted():
-        return jsonify(error={field: errors for field, errors in form.errors.items()}), 400
+        error = {field: errors for field, errors in form.errors.items()}
+        # workaround to get correct display of error message in FormDialog
+        if "parentid" in error:
+            error["parent"] = error["parentid"]
+        return jsonify(error=error), 400
 
     return "", 500  # this should never happen
 
 
-@api.route("/sample/<int:id>", methods=["DELETE"])
+@api.route("/sample/<int:sampleid>", methods=["DELETE"])
 @token_auth.login_required
-def deletesample(id):
+@validate_sample_owner
+def deletesample(sample):
     """Delete a sample from the database.
     ---
     delete:
@@ -89,7 +130,7 @@ def deletesample(id):
       tags: [samples]
       parameters:
       - in: path
-        schema: IdParameter
+        schema: SampleIdParameter
       responses:
         204:
           content:
@@ -97,19 +138,16 @@ def deletesample(id):
               schema: EmptySchema
           description: Sample deleted
     """
-    sample = Sample.query.get(id)
-    # TODO: put this verification in a function
-    if sample is None or sample.owner != token_auth.current_user() or sample.isdeleted:
-        return bad_request("You do not have permission to delete this sample.")
     record_activity("delete:sample", token_auth.current_user(), sample)
     sample.isdeleted = True  # mark sample as "deleted"
     db.session.commit()
     return "", 204
 
 
-@api.route("/sample/<int:id>/togglearchived", methods=["POST"])
+@api.route("/sample/<int:sampleid>/togglearchived", methods=["POST"])
 @token_auth.login_required
-def togglearchived(id):
+@validate_sample_owner
+def togglearchived(sample):
     """Toggle the isarchived-flag of a sample.
     ---
     post:
@@ -117,7 +155,7 @@ def togglearchived(id):
       tags: [samples]
       parameters:
       - in: path
-        schema: IdParameter
+        schema: SampleIdParameter
       responses:
         200:
           content:
@@ -125,17 +163,15 @@ def togglearchived(id):
               schema: ToggleArchivedResponse
           description: isarchived-flag toggled
     """
-    sample = Sample.query.get(id)
-    if sample is None or sample.owner != token_auth.current_user() or sample.isdeleted:
-        return bad_request("Sample does not exist or you do not have the right to access it")
     sample.isarchived = not sample.isarchived
     db.session.commit()
     return jsonify(isarchived=sample.isarchived), 200
 
 
-@api.route("/sample/<int:id>/togglecollaborative", methods=["POST"])
+@api.route("/sample/<int:sampleid>/togglecollaborative", methods=["POST"])
 @token_auth.login_required
-def togglecollaborative(id):
+@validate_sample_owner
+def togglecollaborative(sample):
     """Toggle the iscollaborative-flag of a sample.
     ---
     post:
@@ -143,7 +179,7 @@ def togglecollaborative(id):
       tags: [samples]
       parameters:
       - in: path
-        schema: IdParameter
+        schema: SampleIdParameter
       responses:
         200:
           content:
@@ -151,17 +187,15 @@ def togglecollaborative(id):
               schema: ToggleCollaborativeResponse
           description: iscollaborative-flag toggled
     """
-    sample = Sample.query.get(id)
-    if sample is None or sample.owner != token_auth.current_user() or sample.isdeleted:
-        return bad_request("Sample does not exist or you do not have the right to access it")
     sample.iscollaborative = not sample.iscollaborative
     db.session.commit()
     return jsonify(iscollaborative=sample.iscollaborative), 200
 
 
-@api.route("/sample/<int:id>/changeparent/<int:parentid>", methods=["POST"])
+@api.route("/sample/<int:sampleid>/changeparent/<int:parentid>", methods=["POST"])
 @token_auth.login_required
-def changeparent(id, parentid):
+@validate_sample_access
+def changeparent(sample, parentid):
     """Change the parent of a sample.
     ---
     post:
@@ -169,7 +203,7 @@ def changeparent(id, parentid):
       tags: [samples]
       parameters:
       - in: path
-        schema: IdParameter
+        schema: SampleIdParameter
       - in: path
         schema: ParentIdParameter
       responses:
@@ -179,30 +213,23 @@ def changeparent(id, parentid):
               schema: EmptySchema
           description: parent changed
     """
-    sample = Sample.query.get(id)
-    if (
-        sample is None
-        or not sample.is_accessible_for(token_auth.current_user())
-        or sample.isdeleted
-    ):
-        return bad_request("Sample does not exist or you do not have the right to access it")
+    user = token_auth.current_user()
 
     # check if we're not trying to make the snake bite its tail
-    if parentid != 0:
-        p = Sample.query.filter_by(id=parentid).first()
-        while p.logical_parent:
-            if p.logical_parent == sample:
-                return bad_request("Cannot move sample")
-            p = p.logical_parent
+    p = Sample.query.get(parentid)
+    while p:
+        if p == sample:
+            return bad_request("Cannot move sample")
+        p = logical_parent(p, user)
 
     # check if the current user is the sample owner, otherwise get corresponding share
-    if sample.owner != token_auth.current_user():
-        if sample.is_accessible_for(token_auth.current_user(), indirect_only=True):
+    if sample.owner != user:
+        if is_indirectly_shared(sample, user):
             return bad_request(
                 "The sample owner (" + sample.owner.username + ") has fixed the sample's location.",
             )
 
-        share = Share.query.filter_by(sample=sample, user=token_auth.current_user()).first()
+        share = Share.query.filter_by(sample=sample, user=user).first()
         if share is None:
             return bad_request("Could not find corresponding share")
         try:
